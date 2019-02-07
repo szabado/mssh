@@ -179,8 +179,12 @@ func aggregator(results <-chan *result, resultsFinished chan<- struct{}) {
 		fmt.Printf("host: %s\n", h)
 
 		r := output[h]
+		fmt.Print("result: ")
 		if r.err != nil {
+			fmt.Println("FAILED")
 			fmt.Printf("mssh error: %s\n", r.err)
+		} else {
+			fmt.Println("OK")
 		}
 		fmt.Printf("command output: %s\n", r.output)
 	}
