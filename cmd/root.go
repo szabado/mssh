@@ -94,8 +94,8 @@ var rootCmd = &cobra.Command{
 				host:    h,
 				command: command,
 			}
-			close(jobs)
 		}
+		close(jobs)
 		wg.Wait()
 	},
 }
