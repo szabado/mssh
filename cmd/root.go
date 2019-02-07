@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -27,9 +28,14 @@ type job struct {
 }
 
 type result struct {
+	host   *host
 	output []byte
 	err    error
 }
+
+const (
+	outputBar = "==================================="
+)
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&hostsArg, "hosts", "", "Comma separated list of hostnames to execute on (format [user@]host[:port]). User defaults to the current user. Port defaults to 22.")
@@ -67,40 +73,49 @@ var rootCmd = &cobra.Command{
 		command = args[0]
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		jobs := make(chan *job, maxFlight)
-		shutdown := make(chan struct{})
-		wg := &sync.WaitGroup{}
-
-		hosts, err := parseHostsArg(hostsArg)
-		if err != nil {
-			panic(err)
-		}
-
-		// No point in extra goroutines
-		if len(hosts) < maxFlight {
-			maxFlight = len(hosts)
-		}
-
-		wg.Add(maxFlight)
-		for i := 0; i < maxFlight; i++ {
-			go executor(jobs, shutdown, wg)
-		}
-
-		// TODO: implement timeouts
-		for _, h := range hosts {
-			log.WithField("host", h.hostName).Debug("Creating job for host")
-			jobs <- &job{
-				host:    h,
-				command: command,
-			}
-		}
-		close(jobs)
-		wg.Wait()
-	},
+	Run: RunRoot,
 }
 
-func executor(queue <-chan *job, shutdown <-chan struct{}, wg *sync.WaitGroup) {
+func RunRoot(cmd *cobra.Command, args []string) {
+	hosts, err := parseHostsArg(hostsArg)
+	if err != nil {
+		panic(err)
+	}
+
+	// No point in extra goroutines
+	if len(hosts) < maxFlight {
+		maxFlight = len(hosts)
+	}
+
+	jobs := make(chan *job, maxFlight)
+	shutdown := make(chan struct{})
+	results := make(chan *result, maxFlight)
+	resultsFinished := make(chan struct{})
+
+	wg := &sync.WaitGroup{}
+	wg.Add(maxFlight)
+
+	go aggregator(results, resultsFinished)
+	for i := 0; i < maxFlight; i++ {
+		go executor(jobs, results, shutdown, wg)
+	}
+
+	// TODO: implement timeouts
+	for _, h := range hosts {
+		log.WithField("host", h.hostName).Debug("Creating job for host")
+		jobs <- &job{
+			host:    h,
+			command: command,
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	close(results)
+	<-resultsFinished
+}
+
+func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
@@ -108,11 +123,10 @@ func executor(queue <-chan *job, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 			if !ok {
 				return
 			}
-			log.WithField("host", j.host.hostName).Debug("Received job from queue")
-			if r := handleJob(j); r != nil && r.err != nil {
-				// TODO: send it to an aggregator
-				panic(r.err)
-			}
+			logger := log.WithField("host", j.host)
+			logger.Debug("Received job from queue")
+			results <- handleJob(j)
+			logger.Debug("Submitted results for job")
 		case <-shutdown:
 			// TODO: handle this gracefully so you know what commands have finished
 			return
@@ -121,27 +135,57 @@ func executor(queue <-chan *job, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 }
 
 func handleJob(j *job) *result {
-	logger := log.WithField("host", j.host.hostName)
-	logger.Info("Connecting to host")
+	logger := log.WithField("host", j.host)
+	logger.Debug("Connecting to host")
 	h, err := connectToHost(j.host)
 	if err != nil {
 		return &result{err: err}
 	}
 	defer h.Close()
 
-	logger.Info("Establishing new session")
+	logger.Debug("Establishing new session")
 	s, err := h.NewSession()
 	if err != nil {
 		return &result{err: err}
 	}
 	defer s.Close()
 
-	logger.WithField("command", j.command).Info("Running command")
+	logger.WithField("command", j.command).Debug("Running command")
 	o, err := s.CombinedOutput(j.command)
+	logger.WithField("command", j.command).Debug("Command finished")
 	return &result{
+		host:   j.host,
 		output: o,
 		err:    err,
 	}
+}
+
+func aggregator(results <-chan *result, resultsFinished chan<- struct{}) {
+	output := make(map[string]*result)
+	hosts := make([]string, 0)
+
+	for result := range results {
+		if collapse {
+			// TODO
+		} else {
+			output[result.host.String()] = result
+			hosts = append(hosts, result.host.String())
+		}
+	}
+
+	sort.Strings(hosts)
+	for _, h := range hosts {
+		fmt.Println(outputBar)
+		fmt.Printf("host: %s\n", h)
+
+		r := output[h]
+		if r.err != nil {
+			fmt.Printf("mssh error: %s\n", r.err)
+		}
+		fmt.Printf("command output: %s\n", r.output)
+	}
+
+	close(resultsFinished)
 }
 
 func Execute() {

@@ -63,6 +63,10 @@ type host struct {
 	hostName string
 }
 
+func (h *host) String() string {
+	return fmt.Sprintf("%v@%v:%v", h.user, h.hostName, h.port)
+}
+
 func split(hostList string) []string {
 	// TODO: make this beefier
 	return strings.Split(hostList, ",")
