@@ -10,42 +10,43 @@ import (
 )
 
 var (
-	command string
+	command       string
 	hostsArg      string
 	file          string
 	maxFlight     int
 	timeout       int
 	globalTimeout int
 	collapse      bool
-	verbose bool
-	debug bool
+	verbose       bool
+	debug         bool
 )
 
 type job struct {
-	host *host
+	host    *host
 	command string
 }
 
 type result struct {
 	output []byte
-	err error
+	err    error
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&hostsArg, "hosts", "", "List of hostnames to execute on")
-	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin)")
-	rootCmd.PersistentFlags().IntVarP(&maxFlight, "maxflight", "m", 50, "Maximum number of concurrent connections")
-	rootCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout")
-	rootCmd.PersistentFlags().IntVarP(&globalTimeout, "timeout_global", "g", 600, "How many seconds for all calls to take? 0 for no timeout")
-	rootCmd.PersistentFlags().BoolVarP(&collapse, "collapse", "c", false, "Collapse similar output")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output (INFO level)")
-	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Debug output (DEBUG level)")
+	rootCmd.PersistentFlags().StringVar(&hostsArg, "hosts", "", "Comma separated list of hostnames to execute on (format [user@]host[:port]). User defaults to the current user. Port defaults to 22.")
+	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin).")
+	rootCmd.PersistentFlags().IntVarP(&maxFlight, "maxflight", "m", 50, "Maximum number of concurrent connections.")
+	rootCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout.")
+	// TODO: add an alias for global_timeout for backwards compatibility
+	rootCmd.PersistentFlags().IntVarP(&globalTimeout, "timeout_global", "g", 600, "How many seconds for all calls to take? 0 for no timeout.")
+	rootCmd.PersistentFlags().BoolVarP(&collapse, "collapse", "c", false, "Collapse similar output.")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output (INFO level).")
+	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Debug output (DEBUG level).")
 }
 
 var rootCmd = &cobra.Command{
 	Use:   "mssh [command]",
 	Short: "A tool for running multiple commands and ssh jobs in parallel, and easily collecting the results",
-	Args: cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(1),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if file != "" {
 			panic("--file is not implemented")
@@ -62,6 +63,8 @@ var rootCmd = &cobra.Command{
 		if debug {
 			log.SetLevel(log.DebugLevel)
 		}
+
+		command = args[0]
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -88,7 +91,7 @@ var rootCmd = &cobra.Command{
 		for _, h := range hosts {
 			log.WithField("host", h.hostName).Debug("Creating job for host")
 			jobs <- &job{
-				host: h,
+				host:    h,
 				command: command,
 			}
 			close(jobs)
@@ -101,7 +104,7 @@ func executor(queue <-chan *job, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
-		case j, ok := <- queue:
+		case j, ok := <-queue:
 			if !ok {
 				return
 			}
@@ -110,7 +113,7 @@ func executor(queue <-chan *job, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 				// TODO: send it to an aggregator
 				panic(r.err)
 			}
-		case <- shutdown:
+		case <-shutdown:
 			// TODO: handle this gracefully so you know what commands have finished
 			return
 		}
@@ -137,7 +140,7 @@ func handleJob(j *job) *result {
 	o, err := s.CombinedOutput(j.command)
 	return &result{
 		output: o,
-		err: err,
+		err:    err,
 	}
 }
 

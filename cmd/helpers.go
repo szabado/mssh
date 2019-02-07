@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/user"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 const (
 	defaultPort = 22
 )
+
 func sshAgent() (ssh.AuthMethod, error) {
 	sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
 	if err != nil {
@@ -27,9 +29,9 @@ func sshAgent() (ssh.AuthMethod, error) {
 
 func connectToHost(host *host) (*ssh.Client, error) {
 	logger := log.WithFields(log.Fields{
-		"hostname":host.hostName,
-		"port": host.port,
-		"user": host.user,
+		"hostname": host.hostName,
+		"port":     host.port,
+		"user":     host.user,
 	})
 
 	sa, err := sshAgent()
@@ -42,7 +44,7 @@ func connectToHost(host *host) (*ssh.Client, error) {
 		Auth: []ssh.AuthMethod{
 			sa,
 		},
-		Timeout:10 * time.Second,
+		Timeout:         10 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
@@ -56,9 +58,14 @@ func connectToHost(host *host) (*ssh.Client, error) {
 }
 
 type host struct {
-	user string
-	port int
+	user     string
+	port     int
 	hostName string
+}
+
+func split(hostList string) []string {
+	// TODO: make this beefier
+	return strings.Split(hostList, ",")
 }
 
 func parseHostsArg(hostsArg string) ([]*host, error) {
@@ -70,13 +77,28 @@ func parseHostsArg(hostsArg string) ([]*host, error) {
 		username = u.Username
 	}
 
-	// TODO: make this beefy
-	for _, h := range strings.Split(hostsArg, ",") {
-		hosts = append(hosts, &host{
-			user: username,
-			hostName:h,
-			port:defaultPort,
-		})
+	for _, hostArg := range split(hostsArg) {
+		h := &host{
+			user:     username,
+			hostName: hostArg,
+			port:     defaultPort,
+		}
+
+		if strings.Contains(h.hostName, "@") {
+			parts := strings.Split(h.hostName, "@")
+			h.user = parts[0]
+			h.hostName = parts[1]
+		}
+
+		if strings.Contains(h.hostName, ":") {
+			parts := strings.Split(h.hostName, ":")
+			if p, err := strconv.ParseInt(parts[1], 10, 32); err == nil {
+				h.hostName = parts[0]
+				h.port = int(p)
+			}
+		}
+
+		hosts = append(hosts, h)
 	}
 	return hosts, nil
 }

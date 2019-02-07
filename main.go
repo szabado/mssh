@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/fJancsoSzabo/mssh/cmd"
+	"github.com/szabado/mssh/cmd"
 )
 
 func main() {
