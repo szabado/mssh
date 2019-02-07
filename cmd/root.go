@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"sort"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -55,11 +54,8 @@ var rootCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if file != "" {
+			// TODO: implement --file
 			panic("--file is not implemented")
-		}
-
-		if collapse {
-			panic("--collapse not implemented yet")
 		}
 
 		log.SetLevel(log.FatalLevel)
@@ -79,7 +75,7 @@ var rootCmd = &cobra.Command{
 func RunRoot(cmd *cobra.Command, args []string) {
 	hosts, err := parseHostsArg(hostsArg)
 	if err != nil {
-		panic(err)
+		log.WithError(err).Fatal("Could not parse hosts")
 	}
 
 	// No point in extra goroutines
@@ -160,25 +156,38 @@ func handleJob(j *job) *result {
 	}
 }
 
-func aggregator(results <-chan *result, resultsFinished chan<- struct{}) {
-	output := make(map[string]*result)
-	hosts := make([]string, 0)
+// Returns a combination of the output from the result
+func joinLogs(r *result) string {
+	if r.err == nil {
+		return string(r.output)
+	}
+	return fmt.Sprintf("%s%s", r.err, r.output)
+}
 
-	for result := range results {
+func aggregator(results <-chan *result, resultsFinished chan<- struct{}) {
+	output := make(map[string][]*result)
+
+	for r := range results {
+		key := r.host.String()
 		if collapse {
-			// TODO
-		} else {
-			output[result.host.String()] = result
-			hosts = append(hosts, result.host.String())
+			key = joinLogs(r)
 		}
+
+		output[key] = append(output[key], r)
 	}
 
-	sort.Strings(hosts)
-	for _, h := range hosts {
+	for _, rs := range output {
 		fmt.Println(outputBar)
-		fmt.Printf("host: %s\n", h)
+		hosts := ""
+		for i := 0; i < len(rs); i++ {
+			hosts += rs[i].host.String()
+			if i != len(rs)-1 {
+				hosts += ", "
+			}
+		}
+		fmt.Printf("host: %s\n", hosts)
 
-		r := output[h]
+		r := rs[0]
 		fmt.Print("result: ")
 		if r.err != nil {
 			fmt.Println("FAILED")
