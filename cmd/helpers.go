@@ -44,12 +44,13 @@ func connectToHost(host *host) (*ssh.Client, error) {
 		Auth: []ssh.AuthMethod{
 			sa,
 		},
-		Timeout:         10 * time.Second,
+		Timeout:         time.Duration(timeout) * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
 	logger.Debug("Dialing the host")
 	sshCon, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host.hostName, host.port), cfg)
+	logger.Debug("Dialed to host successfully")
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not ssh into server")
 	}
