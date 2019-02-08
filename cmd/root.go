@@ -38,7 +38,7 @@ const (
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&hostsArg, "hosts", "", "Comma separated list of hostnames to execute on (format [user@]host[:port]). User defaults to the current user. Port defaults to 22.")
-	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin).")
+	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin). Host names can be separated by commas or whitespace.")
 	rootCmd.PersistentFlags().IntVarP(&maxFlight, "maxflight", "m", 50, "Maximum number of concurrent connections.")
 	rootCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout.")
 	// TODO: add an alias for global_timeout for backwards compatibility
@@ -53,11 +53,6 @@ var rootCmd = &cobra.Command{
 	Short: "A tool for running multiple commands and ssh jobs in parallel, and easily collecting the results",
 	Args:  cobra.ExactArgs(1),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if file != "" {
-			// TODO: implement --file
-			panic("--file is not implemented")
-		}
-
 		log.SetLevel(log.FatalLevel)
 		if verbose {
 			log.SetLevel(log.InfoLevel)
@@ -73,6 +68,14 @@ var rootCmd = &cobra.Command{
 }
 
 func RunRoot(cmd *cobra.Command, args []string) {
+	if file != "" {
+		var err error
+		hostsArg, err = loadFileContents(file)
+		if err != nil {
+			log.WithError(err).Fatal("Could not parse input file")
+		}
+	}
+
 	hosts, err := parseHostsArg(hostsArg)
 	if err != nil {
 		log.WithError(err).Fatal("Could not parse hosts")

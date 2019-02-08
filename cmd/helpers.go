@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/user"
@@ -108,4 +109,13 @@ func parseHostsArg(hostsArg string) ([]*host, error) {
 		hosts = append(hosts, h)
 	}
 	return hosts, nil
+}
+
+func loadFileContents(file string) (string, error) {
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
 }
