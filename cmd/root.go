@@ -100,17 +100,31 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		go executor(jobs, results, shutdown, wg)
 	}
 
+	done := make(chan struct{})
 	// TODO: implement timeouts
-	for _, h := range hosts {
-		log.WithField("host", h.hostName).Debug("Creating job for host")
-		jobs <- &job{
-			host:    h,
-			command: command,
+	go func() {
+		for _, h := range hosts {
+			log.WithField("host", h.hostName).Debug("Creating job for host")
+			jobs <- &job{
+				host:    h,
+				command: command,
+			}
 		}
-	}
-	close(jobs)
-	wg.Wait()
+		close(jobs)
 
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-time.After(time.Duration(globalTimeout) * time.Second):
+		// Timed out
+		close(shutdown)
+		wg.Wait()
+
+	case <-done:
+		// Do nothing
+	}
 	close(results)
 	<-resultsFinished
 }
@@ -118,6 +132,16 @@ func RunRoot(cmd *cobra.Command, args []string) {
 func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
+		// Give the shutdown channel priority
+		select {
+		case <-shutdown:
+			// ignore anything else that might be in the queue, terminate
+			log.Debug("Shutting down worker")
+			return
+		default:
+			// Do nothing
+		}
+
 		select {
 		case j, ok := <-queue:
 			if !ok {
@@ -125,16 +149,16 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 			}
 			logger := log.WithField("host", j.host)
 			logger.Debug("Received job from queue")
-			results <- handleJob(j)
+			results <- handleJob(j, shutdown)
 			logger.Debug("Submitted results for job")
 		case <-shutdown:
-			// TODO: handle this gracefully so you know what commands have finished
+			log.Debug("Shutting down worker")
 			return
 		}
 	}
 }
 
-func handleJob(j *job) *result {
+func handleJob(j *job, shutdown <-chan struct{}) *result {
 	done := make(chan *result)
 
 	timeout := time.Duration(timeout) * time.Second
@@ -182,6 +206,12 @@ func handleJob(j *job) *result {
 		return &result{
 			host: j.host,
 			err:  errors.New("Command timed out"),
+		}
+	case <-shutdown:
+		// Global timeout has triggered, time to die
+		return &result{
+			host: j.host,
+			err:  errors.New("Global timeout fired, command interrupted"),
 		}
 	}
 }
