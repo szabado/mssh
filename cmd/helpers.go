@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -69,8 +70,9 @@ func (h *host) String() string {
 }
 
 func split(hostList string) []string {
-	// TODO: make this beefier
-	return strings.Split(hostList, ",")
+	return strings.FieldsFunc(hostList, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ','
+	})
 }
 
 func parseHostsArg(hostsArg string) ([]*host, error) {

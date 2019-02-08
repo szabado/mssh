@@ -76,3 +76,58 @@ func TestParseHostsArg(t *testing.T) {
 		}
 	}
 }
+
+func TestSplit(t *testing.T) {
+	assert := a.New(t)
+	//require := r.New(t)
+
+	tests := []struct {
+		input  string
+		output []string
+	}{
+		{
+			input: "a,b",
+			output: []string{
+				"a",
+				"b",
+			},
+		},
+		{
+			input: "a,b",
+			output: []string{
+				"a",
+				"b",
+			},
+		},
+		{
+			input: "a, b",
+			output: []string{
+				"a",
+				"b",
+			},
+		},
+		{
+			input: "a,b c",
+			output: []string{
+				"a",
+				"b",
+				"c",
+			},
+		},
+		{
+			input: "a\tb\t\nc",
+			output: []string{
+				"a",
+				"b",
+				"c",
+			},
+		},
+	}
+
+	for i, t := range tests {
+		s := split(t.input)
+
+		assert.Equalf(t.output, s, "failure in test #%v", i)
+	}
+
+}
