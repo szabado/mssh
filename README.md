@@ -14,7 +14,7 @@ Usage:
 Flags:
   -c, --collapse             Collapse similar output.
   -d, --debug                Debug output (DEBUG level).
-  -f, --file string          List of hostnames in a file (/dev/stdin for reading from stdin).
+  -f, --file string          List of hostnames in a file (/dev/stdin for reading from stdin). Host names can be separated by commas or whitespace.
   -h, --help                 help for mssh
       --hosts string         Comma separated list of hostnames to execute on (format [user@]host[:port]). User defaults to the current user. Port defaults to 22.
   -m, --maxflight int        Maximum number of concurrent connections. (default 50)
