@@ -29,7 +29,7 @@ func sshAgent() (ssh.AuthMethod, error) {
 	return ssh.PublicKeysCallback(agent.NewClient(sshAgent).Signers), nil
 }
 
-func connectToHost(host *host) (*ssh.Client, error) {
+func connectToHost(host *host, timeout time.Duration) (*ssh.Client, error) {
 	logger := log.WithFields(log.Fields{
 		"hostname": host.hostName,
 		"port":     host.port,
@@ -46,7 +46,7 @@ func connectToHost(host *host) (*ssh.Client, error) {
 		Auth: []ssh.AuthMethod{
 			sa,
 		},
-		Timeout:         time.Duration(timeout) * time.Second,
+		Timeout:         timeout,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 

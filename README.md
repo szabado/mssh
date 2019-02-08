@@ -31,7 +31,7 @@ modules to manage its dependencies.
 ## TODOs
 
 Not all of the flags are functional yet:
-- `--timeout`, `--timeout_global`: don't work at all.
+- `--timeout_global`: doesn't work at all.
 - `--range`: not even present in the codebase yet. I need to port the logic over from [the original](https://github.com/square/rangeclient).
 
 Ping me or open an Issue if you actually need some of them implemented.

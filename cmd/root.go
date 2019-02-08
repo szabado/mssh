@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -133,28 +135,54 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 }
 
 func handleJob(j *job) *result {
+	done := make(chan *result)
+
+	timeout := time.Duration(timeout) * time.Second
+
 	logger := log.WithField("host", j.host)
 	logger.Debug("Connecting to host")
-	h, err := connectToHost(j.host)
-	if err != nil {
-		return &result{err: err}
-	}
-	defer h.Close()
 
-	logger.Debug("Establishing new session")
-	s, err := h.NewSession()
-	if err != nil {
-		return &result{err: err}
-	}
-	defer s.Close()
+	go func() {
+		r := &result{
+			host: j.host,
+		}
+		defer func() {
+			done <- r
+		}()
 
-	logger.WithField("command", j.command).Debug("Running command")
-	o, err := s.CombinedOutput(j.command)
-	logger.WithField("command", j.command).Debug("Command finished")
-	return &result{
-		host:   j.host,
-		output: o,
-		err:    err,
+		h, err := connectToHost(j.host, timeout)
+		if err != nil {
+			r.err = err
+			return
+		}
+		defer h.Close()
+
+		logger.Debug("Establishing new session")
+		s, err := h.NewSession()
+		if err != nil {
+			r.err = err
+			return
+		}
+		defer s.Close()
+
+		logger.WithField("command", j.command).Debug("Running command")
+		o, err := s.CombinedOutput(j.command)
+		logger.WithField("command", j.command).Debug("Command finished")
+
+		r.output = o
+		return
+	}()
+
+	select {
+	case r := <-done:
+		return r
+	case <-time.After(timeout):
+		logger.Info("Command timed out")
+
+		return &result{
+			host: j.host,
+			err:  errors.New("Command timed out"),
+		}
 	}
 }
 
