@@ -14,6 +14,7 @@ cp archive.tar.gz  ${SRCDIR}
 (
 	cd ${SRCDIR}
 	tar -xzf archive.tar.gz --strip-components 1
+	export GO111MODULE=on
     go mod vendor
 	go install .
 )

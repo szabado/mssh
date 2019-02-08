@@ -9,7 +9,7 @@ go:
   - 1.11.x
 
 before_install:
-  - go mod vendor
+  - GO111MODULE=on go mod vendor
 
 install:
   - echo "noop"
