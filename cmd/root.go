@@ -101,7 +101,6 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	}
 
 	done := make(chan struct{})
-	// TODO: implement timeouts
 	go func() {
 		for _, h := range hosts {
 			log.WithField("host", h.hostName).Debug("Creating job for host")
