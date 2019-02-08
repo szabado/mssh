@@ -115,11 +115,19 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		close(done)
 	}()
 
+	timeoutProxy := make(chan time.Time)
+	if globalTimeout != 0 {
+		go func() {
+			t := <-time.After(time.Duration(globalTimeout) * time.Second)
+			timeoutProxy <- t
+		}()
+	}
+
 	select {
-	case <-time.After(time.Duration(globalTimeout) * time.Second):
+	case <-timeoutProxy:
 		// Timed out
 		close(shutdown)
-		wg.Wait()
+		<-done
 
 	case <-done:
 		// Do nothing
@@ -196,10 +204,18 @@ func handleJob(j *job, shutdown <-chan struct{}) *result {
 		return
 	}()
 
+	timeoutProxy := make(chan time.Time)
+	if timeout != 0 {
+		go func() {
+			t := <- time.After(timeout)
+			timeoutProxy <- t
+		}()
+	}
+
 	select {
 	case r := <-done:
 		return r
-	case <-time.After(timeout):
+	case <-timeoutProxy:
 		logger.Info("Command timed out")
 
 		return &result{
