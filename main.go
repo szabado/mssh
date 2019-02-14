@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/szabado/mssh/cmd"
+	"github.com/szabado/mssh/cli"
 )
 
 func main() {
-	cmd.Execute()
+	cli.Execute()
 }

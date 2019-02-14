@@ -1,4 +1,4 @@
-package cmd
+package cli
 
 import (
 	"os/user"
@@ -6,6 +6,8 @@ import (
 
 	a "github.com/stretchr/testify/assert"
 	r "github.com/stretchr/testify/require"
+
+	"github.com/szabado/mssh/ssh"
 )
 
 func TestParseHostsArg(t *testing.T) {
@@ -16,49 +18,49 @@ func TestParseHostsArg(t *testing.T) {
 	require.Nil(err)
 	tests := []struct {
 		input  string
-		output []*host
+		output []*ssh.Host
 		err    bool
 	}{
 		{
 			input: "example.com",
-			output: []*host{
+			output: []*ssh.Host{
 				{
-					hostName: "example.com",
-					port:     defaultPort,
-					user:     u.Username,
+					Hostname: "example.com",
+					Port:     defaultPort,
+					User:     u.Username,
 				},
 			},
 			err: false,
 		},
 		{
 			input: "user@example.com",
-			output: []*host{
+			output: []*ssh.Host{
 				{
-					hostName: "example.com",
-					port:     defaultPort,
-					user:     "user",
+					Hostname: "example.com",
+					Port:     defaultPort,
+					User:     "user",
 				},
 			},
 			err: false,
 		},
 		{
 			input: "example.com:30",
-			output: []*host{
+			output: []*ssh.Host{
 				{
-					hostName: "example.com",
-					port:     30,
-					user:     u.Username,
+					Hostname: "example.com",
+					Port:     30,
+					User:     u.Username,
 				},
 			},
 			err: false,
 		},
 		{
 			input: "user@example.com:30",
-			output: []*host{
+			output: []*ssh.Host{
 				{
-					hostName: "example.com",
-					port:     30,
-					user:     "user",
+					Hostname: "example.com",
+					Port:     30,
+					User:     "user",
 				},
 			},
 			err: false,

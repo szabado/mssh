@@ -1,4 +1,4 @@
-package cmd
+package cli
 
 import (
 	"fmt"
@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/szabado/mssh/ssh"
 )
 
 var (
@@ -24,12 +26,12 @@ var (
 )
 
 type job struct {
-	host    *host
+	host    *ssh.Host
 	command string
 }
 
 type result struct {
-	host   *host
+	host   *ssh.Host
 	output []byte
 	err    error
 }
@@ -103,7 +105,7 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	done := make(chan struct{})
 	go func() {
 		for _, h := range hosts {
-			log.WithField("host", h.hostName).Debug("Creating job for host")
+			log.WithField("host", h.Hostname).Debug("Creating job for host")
 			jobs <- &job{
 				host:    h,
 				command: command,
@@ -181,7 +183,7 @@ func handleJob(j *job, shutdown <-chan struct{}) *result {
 			done <- r
 		}()
 
-		h, err := connectToHost(j.host, timeout)
+		h, err := ssh.ConnectToHost(j.host, timeout)
 		if err != nil {
 			r.err = err
 			return
@@ -207,7 +209,7 @@ func handleJob(j *job, shutdown <-chan struct{}) *result {
 	timeoutProxy := make(chan time.Time)
 	if timeout != 0 {
 		go func() {
-			t := <- time.After(timeout)
+			t := <-time.After(timeout)
 			timeoutProxy <- t
 		}()
 	}
