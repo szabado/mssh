@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/pkg/errors"
@@ -86,4 +87,9 @@ func RunCommand(h *Host, command string, timeout time.Duration) ([]byte, error) 
 	logger.WithField("command", command).Debug("Command finished")
 
 	return o, err
+}
+
+func RunCommandWithOpenSSH(h *Host, command string) ([]byte, error) {
+	c := exec.Command("ssh", h.String(), command)
+	return c.CombinedOutput()
 }
