@@ -6,7 +6,7 @@ export GOPATH="$(pwd)/.gobuild"
 SRCDIR="${GOPATH}/src/github.com/szabado/mssh"
 
 [[ -d "${GOPATH}" ]] && rm -rf ${GOPATH}
-tar -czf archive.tar.gz .
+tar --exclude="archive.tar.gz" -czf archive.tar.gz .
 
 mkdir -p ${GOPATH}/{src,pkg,bin}
 mkdir -p ${SRCDIR}
