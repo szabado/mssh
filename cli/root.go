@@ -23,7 +23,7 @@ var (
 	collapseArg      bool
 	verboseArg       bool
 	debugArg         bool
-	useOpenSSHArg    bool
+	useGoSSHArg      bool
 
 	hosts []*ssh.Host
 )
@@ -50,7 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&timeoutArg, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout.")
 	rootCmd.PersistentFlags().IntVarP(&globalTimeoutArg, "timeout_global", "g", 600, "How many seconds for all calls to take? 0 for no timeout.")
 	rootCmd.PersistentFlags().BoolVarP(&collapseArg, "collapse", "c", false, "Collapse similar output.")
-	rootCmd.PersistentFlags().BoolVarP(&useOpenSSHArg, "openSSH", "o", true, "Use OpenSSH instead of the Go SSH library. This allows mssh to reference ~/.ssh/config. Disable if you want mssh to ignore OpenSSH; mssh will still talk to ssh-agent to get credentials.")
+	rootCmd.PersistentFlags().BoolVarP(&useGoSSHArg, "disable-open-ssh", "o", false, "Disable OpenSSH in favour of the Go SSH library. Disabling causes mssh to ignore ~/.ssh/config; mssh will still talk to ssh-agent to get credentials.")
 	rootCmd.PersistentFlags().BoolVarP(&verboseArg, "verbose", "v", false, "Verbose output (INFO level).")
 	rootCmd.PersistentFlags().BoolVarP(&debugArg, "debug", "d", false, "Debug output (DEBUG level).")
 }
@@ -105,7 +105,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 	wg := &sync.WaitGroup{}
 	wg.Add(maxFlight)
 	for i := 0; i < maxFlight; i++ {
-		go executor(jobs, results, shutdown, wg, time.Duration(timeoutArg)*time.Second, useOpenSSHArg)
+		go executor(jobs, results, shutdown, wg, time.Duration(timeoutArg)*time.Second, useGoSSHArg)
 	}
 
 	go jobGenerator(jobs, hosts)
@@ -146,7 +146,7 @@ func jobGenerator(jobs chan<- *job, hosts []*ssh.Host) {
 	close(jobs)
 }
 
-func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup, timeout time.Duration, useOpenSSH bool) {
+func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup, timeout time.Duration, useGoSSH bool) {
 	defer wg.Done()
 	for {
 		// Give the shutdown channel priority
@@ -166,7 +166,7 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 			}
 			logger := log.WithField("host", j.host)
 			logger.Debug("Received job from queue")
-			results <- handleJob(j, shutdown, timeout, useOpenSSH)
+			results <- handleJob(j, shutdown, timeout, useGoSSH)
 			logger.Debug("Submitted results for job")
 		case <-shutdown:
 			log.Debug("Shutting down worker")
@@ -175,11 +175,19 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 	}
 }
 
-func handleJob(j *job, shutdown <-chan struct{}, timeout time.Duration, useOpenSSH bool) *result {
+func handleJob(j *job, shutdown <-chan struct{}, timeout time.Duration, useGoSSH bool) *result {
 	done := make(chan *result)
 
 	go func() {
-		o, err := ssh.RunCommand(j.host, j.command, timeout)
+		var (
+			o   []byte
+			err error
+		)
+		if useGoSSH {
+			o, err = ssh.RunCommand(j.host, j.command, timeout)
+		} else {
+			o, err = ssh.RunCommandWithOpenSSH(j.host, j.command)
+		}
 		done <- &result{
 			host:   j.host,
 			output: o,

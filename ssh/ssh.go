@@ -5,12 +5,20 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+)
+
+const (
+	defaultPort = -1
+	defaultUser = ""
 )
 
 type Host struct {
@@ -20,7 +28,39 @@ type Host struct {
 }
 
 func (h *Host) String() string {
-	return fmt.Sprintf("%v@%v:%v", h.User, h.Hostname, h.Port)
+	s := h.Hostname
+	if h.User != defaultUser {
+		s = fmt.Sprintf("%s@%s", h.User, s)
+	}
+
+	if h.Port != defaultPort {
+		s = fmt.Sprintf("%s:%v", s, h.Port)
+	}
+
+	return s
+}
+
+func ParseHostString(s string) *Host {
+	h := &Host{
+		User:     defaultUser,
+		Hostname: s,
+		Port:     defaultPort,
+	}
+
+	if strings.Contains(h.Hostname, "@") {
+		parts := strings.Split(h.Hostname, "@")
+		h.User = parts[0]
+		h.Hostname = parts[1]
+	}
+
+	if strings.Contains(h.Hostname, ":") {
+		parts := strings.Split(h.Hostname, ":")
+		if p, err := strconv.ParseInt(parts[1], 10, 32); err == nil {
+			h.Hostname = parts[0]
+			h.Port = int(p)
+		}
+	}
+	return h
 }
 
 func sshAgent() (ssh.AuthMethod, error) {
@@ -32,15 +72,23 @@ func sshAgent() (ssh.AuthMethod, error) {
 }
 
 func ConnectToHost(host *Host, timeout time.Duration) (*ssh.Client, error) {
-	logger := log.WithFields(log.Fields{
-		"hostname": host.Hostname,
-		"port":     host.Port,
-		"user":     host.User,
-	})
+	logger := log.WithField("host", fmt.Sprintf("%s", host))
 
 	sa, err := sshAgent()
 	if err != nil {
 		return nil, err
+	}
+
+	if host.User == defaultUser {
+		if u, err := user.Current(); err != nil {
+			return nil, err
+		} else {
+			host.User = u.Username
+		}
+	}
+
+	if host.Port == defaultPort {
+		host.Port = 22
 	}
 
 	cfg := &ssh.ClientConfig{
