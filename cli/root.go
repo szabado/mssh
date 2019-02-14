@@ -14,15 +14,17 @@ import (
 )
 
 var (
-	command       string
-	hostsArg      string
-	file          string
-	maxFlight     int
-	timeout       int
-	globalTimeout int
-	collapse      bool
-	verbose       bool
-	debug         bool
+	commandArg       string
+	hostsArg         string
+	fileArg          string
+	maxFlightArg     int
+	timeoutArg       int
+	globalTimeoutArg int
+	collapseArg      bool
+	verboseArg       bool
+	debugArg         bool
+
+	hosts []*ssh.Host
 )
 
 type job struct {
@@ -42,13 +44,13 @@ const (
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&hostsArg, "hosts", "", "Comma separated list of hostnames to execute on (format [user@]host[:port]). User defaults to the current user. Port defaults to 22.")
-	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin). Host names can be separated by commas or whitespace.")
-	rootCmd.PersistentFlags().IntVarP(&maxFlight, "maxflight", "m", 50, "Maximum number of concurrent connections.")
-	rootCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout.")
-	rootCmd.PersistentFlags().IntVarP(&globalTimeout, "timeout_global", "g", 600, "How many seconds for all calls to take? 0 for no timeout.")
-	rootCmd.PersistentFlags().BoolVarP(&collapse, "collapse", "c", false, "Collapse similar output.")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output (INFO level).")
-	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Debug output (DEBUG level).")
+	rootCmd.PersistentFlags().StringVarP(&fileArg, "file", "f", "", "List of hostnames in a file (/dev/stdin for reading from stdin). Host names can be separated by commas or whitespace.")
+	rootCmd.PersistentFlags().IntVarP(&maxFlightArg, "maxflight", "m", 50, "Maximum number of concurrent connections.")
+	rootCmd.PersistentFlags().IntVarP(&timeoutArg, "timeout", "t", 60, "How many seconds may each individual call take? 0 for no timeout.")
+	rootCmd.PersistentFlags().IntVarP(&globalTimeoutArg, "timeout_global", "g", 600, "How many seconds for all calls to take? 0 for no timeout.")
+	rootCmd.PersistentFlags().BoolVarP(&collapseArg, "collapse", "c", false, "Collapse similar output.")
+	rootCmd.PersistentFlags().BoolVarP(&verboseArg, "verbose", "v", false, "Verbose output (INFO level).")
+	rootCmd.PersistentFlags().BoolVarP(&debugArg, "debug", "d", false, "Debug output (DEBUG level).")
 }
 
 var rootCmd = &cobra.Command{
@@ -57,33 +59,35 @@ var rootCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		log.SetLevel(log.FatalLevel)
-		if verbose {
+		if verboseArg {
 			log.SetLevel(log.InfoLevel)
 		}
-		if debug {
+		if debugArg {
 			log.SetLevel(log.DebugLevel)
 		}
 
-		command = args[0]
+		commandArg = args[0]
+
+		if fileArg != "" {
+			var err error
+			hostsArg, err = loadFileContents(fileArg)
+			if err != nil {
+				log.WithError(err).Fatal("Could not parse input file")
+			}
+		}
+
+		var err error
+		hosts, err = parseHostsArg(hostsArg)
+		if err != nil {
+			log.WithError(err).Fatal("Could not parse hosts")
+		}
 		return nil
 	},
-	Run: RunRoot,
+	Run: runRoot,
 }
 
-func RunRoot(cmd *cobra.Command, args []string) {
-	if file != "" {
-		var err error
-		hostsArg, err = loadFileContents(file)
-		if err != nil {
-			log.WithError(err).Fatal("Could not parse input file")
-		}
-	}
-
-	hosts, err := parseHostsArg(hostsArg)
-	if err != nil {
-		log.WithError(err).Fatal("Could not parse hosts")
-	}
-
+func runRoot(cmd *cobra.Command, args []string) {
+	maxFlight := maxFlightArg
 	// No point in extra goroutines
 	if len(hosts) < maxFlight {
 		maxFlight = len(hosts)
@@ -94,43 +98,34 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	results := make(chan *result, maxFlight)
 	resultsFinished := make(chan struct{})
 
+	go aggregator(results, resultsFinished, collapseArg)
+
 	wg := &sync.WaitGroup{}
 	wg.Add(maxFlight)
-
-	go aggregator(results, resultsFinished)
 	for i := 0; i < maxFlight; i++ {
-		go executor(jobs, results, shutdown, wg)
+		go executor(jobs, results, shutdown, wg, time.Duration(timeoutArg)*time.Second)
 	}
 
-	done := make(chan struct{})
-	go func() {
-		for _, h := range hosts {
-			log.WithField("host", h.Hostname).Debug("Creating job for host")
-			jobs <- &job{
-				host:    h,
-				command: command,
-			}
-		}
-		close(jobs)
-
-		wg.Wait()
-		close(done)
-	}()
+	go jobGenerator(jobs, hosts)
 
 	timeoutProxy := make(chan time.Time)
-	if globalTimeout != 0 {
+	if globalTimeoutArg != 0 {
 		go func() {
-			t := <-time.After(time.Duration(globalTimeout) * time.Second)
+			t := <-time.After(time.Duration(globalTimeoutArg) * time.Second)
 			timeoutProxy <- t
 		}()
 	}
 
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 	select {
 	case <-timeoutProxy:
 		// Timed out
 		close(shutdown)
 		<-done
-
 	case <-done:
 		// Do nothing
 	}
@@ -138,7 +133,18 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	<-resultsFinished
 }
 
-func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup) {
+func jobGenerator(jobs chan<- *job, hosts []*ssh.Host) {
+	for _, h := range hosts {
+		log.WithField("host", h.Hostname).Debug("Creating job for host")
+		jobs <- &job{
+			host:    h,
+			command: commandArg,
+		}
+	}
+	close(jobs)
+}
+
+func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{}, wg *sync.WaitGroup, timeout time.Duration) {
 	defer wg.Done()
 	for {
 		// Give the shutdown channel priority
@@ -158,7 +164,7 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 			}
 			logger := log.WithField("host", j.host)
 			logger.Debug("Received job from queue")
-			results <- handleJob(j, shutdown)
+			results <- handleJob(j, shutdown, timeout)
 			logger.Debug("Submitted results for job")
 		case <-shutdown:
 			log.Debug("Shutting down worker")
@@ -167,43 +173,16 @@ func executor(queue <-chan *job, results chan<- *result, shutdown <-chan struct{
 	}
 }
 
-func handleJob(j *job, shutdown <-chan struct{}) *result {
+func handleJob(j *job, shutdown <-chan struct{}, timeout time.Duration) *result {
 	done := make(chan *result)
 
-	timeout := time.Duration(timeout) * time.Second
-
-	logger := log.WithField("host", j.host)
-	logger.Debug("Connecting to host")
-
 	go func() {
-		r := &result{
-			host: j.host,
+		o, err := ssh.RunCommand(j.host, j.command, timeout)
+		done <- &result{
+			host:   j.host,
+			output: o,
+			err:    err,
 		}
-		defer func() {
-			done <- r
-		}()
-
-		h, err := ssh.ConnectToHost(j.host, timeout)
-		if err != nil {
-			r.err = err
-			return
-		}
-		defer h.Close()
-
-		logger.Debug("Establishing new session")
-		s, err := h.NewSession()
-		if err != nil {
-			r.err = err
-			return
-		}
-		defer s.Close()
-
-		logger.WithField("command", j.command).Debug("Running command")
-		o, err := s.CombinedOutput(j.command)
-		logger.WithField("command", j.command).Debug("Command finished")
-
-		r.output = o
-		return
 	}()
 
 	timeoutProxy := make(chan time.Time)
@@ -218,7 +197,7 @@ func handleJob(j *job, shutdown <-chan struct{}) *result {
 	case r := <-done:
 		return r
 	case <-timeoutProxy:
-		logger.Info("Command timed out")
+		log.Info("Command timed out")
 
 		return &result{
 			host: j.host,
@@ -241,7 +220,7 @@ func joinLogs(r *result) string {
 	return fmt.Sprintf("%s%s", r.err, r.output)
 }
 
-func aggregator(results <-chan *result, resultsFinished chan<- struct{}) {
+func aggregator(results <-chan *result, resultsFinished chan<- struct{}, collapse bool) {
 	output := make(map[string][]*result)
 
 	for r := range results {

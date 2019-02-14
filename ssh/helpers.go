@@ -60,3 +60,30 @@ func ConnectToHost(host *Host, timeout time.Duration) (*ssh.Client, error) {
 
 	return sshCon, nil
 }
+
+func RunCommand(h *Host, command string, timeout time.Duration) ([]byte, error) {
+	logger := log.WithFields(log.Fields{
+		"hostname": h.Hostname,
+		"port":     h.Port,
+		"user":     h.User,
+	})
+
+	c, err := ConnectToHost(h, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+
+	logger.Debug("Establishing new session")
+	s, err := c.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+
+	logger.WithField("command", command).Debug("Running command")
+	o, err := s.CombinedOutput(command)
+	logger.WithField("command", command).Debug("Command finished")
+
+	return o, err
+}
