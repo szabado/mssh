@@ -1,4 +1,6 @@
 # mssh
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fszabado%2Fmssh.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fszabado%2Fmssh?ref=badge_shield)
+
 
 A tool for running multiple commands and ssh jobs in parallel, and easily collecting the results. This tool is based on 
 Square's [tool of the same name](https://github.com/square/mssh) but is written in Go instead of Ruby.
@@ -36,3 +38,7 @@ Not all of the flags are functional yet:
 Ping me or open an Issue if you actually need some of them implemented.
 
 
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fszabado%2Fmssh.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fszabado%2Fmssh?ref=badge_large)
