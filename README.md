@@ -1,13 +1,11 @@
 # mssh
 
-A tool for running multiple commands and ssh jobs in parallel, and easily collecting the results. This tool is based on 
-Square's [tool of the same name](https://github.com/square/mssh) but is written in Go instead of Ruby.
+A tool for running commands over multiple servers via SSH in parallel, and easily collecting the results. This tool is based on 
+Square's [mssh](https://github.com/square/mssh) but is written in Go instead of Ruby.
 
 ## Usage
 
 ```
-A tool for running multiple commands and ssh jobs in parallel, and easily collecting the results
-
 Usage:
   mssh [command] [flags]
 
@@ -23,16 +21,15 @@ Flags:
   -v, --verbose              Verbose output (INFO level).
 ```
 
-## Installing
+## Installation
 
-You can do it manually, or you can install it from ~~my homebrew tap~~ (coming soon).  It requires go 1.11 as it uses
-modules to manage its dependencies.
+### Homebrew
+1. `brew tap szabado/tools`
+2. `brew install szabado/tools/mssh`
 
-## TODOs
+### Build from source
 
-Not all of the flags are functional yet:
-- `--range`: not even present in the codebase yet. I need to port the logic over from [the original](https://github.com/square/rangeclient).
-
-Ping me or open an Issue if you actually need some of them implemented.
-
-
+This tool is built using [Hermit](https://github.com/cashapp/hermit), and fetches its own build tools as part of its build process. To build this from source:
+1. Download the source.
+2. Run `./bin/go build`
+3. Put the resultant `mssh` binary in your `PATH`
