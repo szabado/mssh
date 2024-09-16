@@ -1,4 +1,4 @@
-# mssh
+# `mssh`
 
 A tool for running commands over multiple servers via SSH in parallel, and easily collecting the results. This tool is based on 
 Square's [mssh](https://github.com/square/mssh) but is written in Go instead of Ruby.
