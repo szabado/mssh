@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"io/ioutil"
+	"os"
 	"strings"
 	"unicode"
 
@@ -23,7 +23,7 @@ func parseHostsArg(hostsArg string) ([]*ssh.Host, error) {
 }
 
 func loadFileContents(file string) (string, error) {
-	b, err := ioutil.ReadFile(file)
+	b, err := os.ReadFile(file)
 	if err != nil {
 		return "", err
 	}
